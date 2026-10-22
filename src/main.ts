@@ -564,12 +564,14 @@ function renderPanel() {
   body.scrollTop = scroll;
 }
 
+const clip = (q: string) => (q.length > 220 ? q.slice(0, 217) + "…" : q);
+
 function quoteBlock(span: Span, context = false) {
   const s = sceneOf(span);
   return h(
     "button",
     { class: "quote" + (context ? " context" : ""), onclick: () => jump(span), title: "Jump to this passage" },
-    h("span", { class: "q" }, `“${span.quote.length > 220 ? span.quote.slice(0, 217) + "…" : span.quote}”`),
+    h("span", { class: "q" }, /^["“]/.test(span.quote) ? clip(span.quote) : `“${clip(span.quote)}”`),
     h("span", { class: "where" }, s ? `Ch. ${s.chapter} · ${s.title}` : "Deleted scene"),
   );
 }
