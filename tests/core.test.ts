@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sampleProject } from "../src/data/sample";
 import { buildModel, factKey } from "../src/core/model";
 import { runChecks } from "../src/core/checks";
 import { applySuggestion, restoreScenes } from "../src/core/edits";
-import { fromFiles, importManuscript, newProject, toFiles } from "../src/core/project";
+import { countWords, fromFiles, importManuscript, newProject, summarizeManifest, toFiles } from "../src/core/project";
+import { createStore } from "../src/storage";
 import type { Project } from "../src/core/types";
 
 const analyse = (p: Project) => runChecks(p, buildModel(p));
@@ -173,5 +174,41 @@ describe("AI tier results", () => {
     expect(runChecks(p, buildModel(p, ai)).some((i) => i.title === "Nora Pike's eye colour changes")).toBe(true);
     s10.text = s10.text.replace("Nora Pike met Hale", "Nora Pike found Hale");
     expect(runChecks(p, buildModel(p, ai)).some((i) => i.title === "Nora Pike's eye colour changes")).toBe(false);
+  });
+});
+
+describe("project library", () => {
+  it("lists a project from its manifest alone and keeps the manifest field out of the project", () => {
+    const p = sampleProject();
+    const files = toFiles(p);
+    const sum = summarizeManifest(files.manifest, 5)!;
+    expect(sum).toEqual({ id: p.id, title: p.title, words: countWords(p.scenes), scenes: p.scenes.length, updated: 5 });
+    expect(sum.words).toBeGreaterThan(500);
+    expect("words" in fromFiles(files)).toBe(false);
+    expect(summarizeManifest("not json")).toBeNull();
+  });
+
+  it("keeps several novels in the browser store, migrates the old single slot, and deletes", async () => {
+    const mem = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => void mem.set(k, v),
+      removeItem: (k: string) => void mem.delete(k),
+    });
+    const old = sampleProject();
+    mem.set("draftr:project", JSON.stringify(toFiles(old)));
+    const store = createStore();
+    expect(mem.has("draftr:project")).toBe(false);
+    const second = newProject("Second book");
+    second.scenes[0].text = "One two three.";
+    await store.save(second);
+    const list = await store.list();
+    expect(list.map((x) => x.title).sort()).toEqual(["Second book", old.title].sort());
+    expect(list.find((x) => x.id === second.id)?.words).toBe(3);
+    expect((await store.load(old.id))?.scenes.length).toBe(old.scenes.length);
+    await store.remove(old.id);
+    expect((await store.list()).map((x) => x.id)).toEqual([second.id]);
+    expect(await store.load(old.id)).toBeNull();
+    vi.unstubAllGlobals();
   });
 });
