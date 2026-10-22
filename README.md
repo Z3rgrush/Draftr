@@ -15,6 +15,7 @@ It opens on a 10-scene sample, *The Ashgrove Letters*, with seven planted contin
 | Author control | Quiet (nothing shown), Gentle (a count only) and Editor (underlines plus the panel) modes, per-check toggles, absence threshold |
 | Tracking | Who appears where (acting vs mentioned), theme strip, plot-thread beats, timeline by in-story date |
 | AI tier | A narrow `StoryAI` interface shaped like the proposed Chaptr API (`extract`, `check`). Until Chaptr's endpoints exist, `ClaudeStandIn` implements it on the Claude API with the author's own key: per-scene extraction on a long pause, an on-demand deep check per scene (knowledge leaks, POV slips, setting drift), and a send log. AI facts are dropped automatically when the paragraph they came from changes. Off by default; rule checks need no network |
+| Library | Any number of novels. The Library (top left) lists them with word and scene counts and when each was last edited; create, open, rename and delete from there, and switching saves the one you leave. Deleting moves the folder to `Documents/Draftr/.trash` and can be undone from the toast. Each novel keeps its own story bible, decisions and settings |
 | Files | Each project is a plain folder: `project.json` plus one Markdown-with-frontmatter file per scene in `scenes/`. Writes are atomic, unchanged files are not rewritten, and deleted scenes go to `.trash/`. Import `.txt`/`.md` by chapter headings and scene breaks; export Markdown |
 
 ## Stack and why
@@ -34,7 +35,7 @@ npm run build:preview  # single-file browser preview in dist-preview/
 cd src-tauri && cargo test   # Rust file-handling tests
 ```
 
-Projects are saved under `Documents/Draftr/<title>-<id>/`.
+Projects are saved under `Documents/Draftr/<title>-<id>/`. The library is every project folder found there, plus any folder opened from elsewhere with "Open project folder…". There is no sign-in yet: the library belongs to the computer's user account (in the browser preview, to that browser).
 
 To try the AI tier: Settings, turn on "Use the AI tier", paste an Anthropic API key. The key stays on the machine and is never written to the project folder.
 

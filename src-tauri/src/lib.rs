@@ -104,11 +104,80 @@ fn load_project(dir: String) -> Result<ProjectFiles, String> {
     Ok(ProjectFiles { manifest, scenes })
 }
 
+#[derive(Serialize)]
+pub struct ProjectEntry {
+    dir: String,
+    manifest: String,
+    /// When project.json was last written, in ms since the Unix epoch.
+    modified: u64,
+}
+
+/// Every project folder directly under `root`, plus folders opened from elsewhere.
+fn list_in(root: &Path, extra: &[String]) -> Vec<ProjectEntry> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(rd) = fs::read_dir(root) {
+        for entry in rd.flatten() {
+            let hidden = entry.file_name().to_string_lossy().starts_with('.');
+            if !hidden && entry.path().is_dir() {
+                dirs.push(entry.path());
+            }
+        }
+    }
+    dirs.extend(extra.iter().map(PathBuf::from));
+    let mut out: Vec<ProjectEntry> = Vec::new();
+    for dir in dirs {
+        let dir_s = dir.to_string_lossy().into_owned();
+        if out.iter().any(|e| e.dir == dir_s) {
+            continue;
+        }
+        let path = dir.join("project.json");
+        let Ok(manifest) = fs::read_to_string(&path) else { continue };
+        let modified = fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        out.push(ProjectEntry { dir: dir_s, manifest, modified });
+    }
+    out
+}
+
+/// Move a whole project folder into `trash`, stamped so repeated deletes never collide.
+fn trash_into(dir: &Path, trash: &Path, stamp: u64) -> Result<PathBuf, String> {
+    if !dir.join("project.json").is_file() {
+        return Err("not a Draftr project folder".into());
+    }
+    let name = dir.file_name().ok_or("bad project folder")?.to_string_lossy().into_owned();
+    fs::create_dir_all(trash).map_err(|e| e.to_string())?;
+    let dest = trash.join(format!("{name}-{stamp}"));
+    fs::rename(dir, &dest).map_err(|e| e.to_string())?;
+    Ok(dest)
+}
+
+#[tauri::command]
+fn list_projects(app: tauri::AppHandle, extra: Vec<String>) -> Result<Vec<ProjectEntry>, String> {
+    let root = projects_root(app)?;
+    Ok(list_in(Path::new(&root), &extra))
+}
+
+/// Deleting a project moves its folder to Documents/Draftr/.trash, never into the void.
+#[tauri::command]
+fn trash_project(app: tauri::AppHandle, dir: String) -> Result<String, String> {
+    let root = projects_root(app)?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let dest = trash_into(Path::new(&dir), &Path::new(&root).join(".trash"), stamp)?;
+    Ok(dest.to_string_lossy().into_owned())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![projects_root, save_project, load_project, export_file])
+        .invoke_handler(tauri::generate_handler![projects_root, save_project, load_project, export_file, list_projects, trash_project])
         .run(tauri::generate_context!())
         .expect("error while running Draftr");
 }
@@ -140,5 +209,29 @@ mod tests {
         save_project(dir.to_string_lossy().into(), ProjectFiles { manifest: "{}".into(), scenes: vec![] }).unwrap();
         assert!(dir.join(".trash/001-a.md").exists());
         fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn lists_and_trashes_projects() {
+        let root = std::env::temp_dir().join(format!("draftr-lib-{}", std::process::id()));
+        let elsewhere = std::env::temp_dir().join(format!("draftr-elsewhere-{}", std::process::id()));
+        for d in [root.join("a-p1"), root.join("not-a-project"), root.join(".trash/old"), elsewhere.clone()] {
+            fs::create_dir_all(&d).unwrap();
+        }
+        fs::write(root.join("a-p1/project.json"), "{\"id\":\"p1\"}").unwrap();
+        fs::write(elsewhere.join("project.json"), "{\"id\":\"p2\"}").unwrap();
+        let extra = vec![elsewhere.to_string_lossy().into_owned(), root.join("a-p1").to_string_lossy().into_owned()];
+        let list = list_in(&root, &extra);
+        let mut ids: Vec<_> = list.iter().map(|e| e.manifest.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, ["{\"id\":\"p1\"}", "{\"id\":\"p2\"}"]);
+        assert!(list.iter().all(|e| e.modified > 0));
+
+        assert!(trash_into(&root.join("not-a-project"), &root.join(".trash"), 1).is_err());
+        let dest = trash_into(&root.join("a-p1"), &root.join(".trash"), 7).unwrap();
+        assert!(dest.ends_with("a-p1-7") && dest.join("project.json").exists());
+        assert_eq!(list_in(&root, &[]).len(), 0);
+        fs::remove_dir_all(root).ok();
+        fs::remove_dir_all(elsewhere).ok();
     }
 }

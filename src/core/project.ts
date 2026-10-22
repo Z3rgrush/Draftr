@@ -75,6 +75,35 @@ export function exportMarkdown(project: Project, ordered: Scene[]): string {
   return out.join("\n");
 }
 
+/** What the library shows for a project without loading it. */
+export interface ProjectSummary {
+  id: string;
+  title: string;
+  words: number;
+  scenes: number;
+  /** Last saved, ms since the epoch; 0 if unknown. */
+  updated: number;
+}
+
+export function countWords(scenes: Scene[]) {
+  return scenes.reduce((n, s) => n + (s.text.match(/\S+/g) ?? []).length, 0);
+}
+
+export function summarize(p: Project, updated = 0): ProjectSummary {
+  return { id: p.id, title: p.title, words: countWords(p.scenes), scenes: p.scenes.length, updated };
+}
+
+/** Read a summary straight from a project.json manifest. */
+export function summarizeManifest(manifest: string, updated = 0): ProjectSummary | null {
+  try {
+    const m = JSON.parse(manifest);
+    if (typeof m.id !== "string") return null;
+    return { id: m.id, title: typeof m.title === "string" ? m.title : "Untitled novel", words: typeof m.words === "number" ? m.words : 0, scenes: Array.isArray(m.sceneFiles) ? m.sceneFiles.length : 0, updated };
+  } catch {
+    return null;
+  }
+}
+
 /** The on-disk project folder: a manifest plus one Markdown-with-frontmatter file per scene. */
 export interface ProjectFiles {
   manifest: string;
@@ -102,7 +131,8 @@ export function toFiles(project: Project): ProjectFiles {
       .join("\n");
     return { file, content: fm + s.text.trim() + "\n" };
   });
-  const manifest = JSON.stringify({ format: "draftr-project/1", ...rest, sceneFiles: files.map((f) => f.file) }, null, 2);
+  // `words` lets the library list a project without reading its scenes.
+  const manifest = JSON.stringify({ format: "draftr-project/1", ...rest, words: countWords(scenes), sceneFiles: files.map((f) => f.file) }, null, 2);
   return { manifest, scenes: files };
 }
 
@@ -112,6 +142,7 @@ export function fromFiles(files: ProjectFiles): Project {
   const scenes: Scene[] = (m.sceneFiles as string[]).filter((f) => byName.has(f)).map((f) => parseScene(byName.get(f)!));
   delete m.sceneFiles;
   delete m.format;
+  delete m.words;
   return { ...m, scenes, bible: { ...defaultBible(), ...m.bible }, settings: { ...defaultSettings(), ...m.settings } };
 }
 

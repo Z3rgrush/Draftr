@@ -9,6 +9,7 @@
     <div id="app">
       <header class="topbar">
         <button class="icon" id="toggle-binder" title="Show or hide the binder">☰</button>
+        <button id="open-library" title="All your novels">Library</button>
         <input id="project-title" class="project-title" aria-label="Project title" />
         <span id="save-status" class="muted small"></span>
         <div class="spacer"></div>
@@ -38,6 +39,7 @@
           <div id="panel-body" class="panel-body"></div>
         </aside>
       </main>
+      <section id="library" class="library" hidden aria-label="Your novels"></section>
       <div id="toast" class="toast" hidden></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

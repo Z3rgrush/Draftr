@@ -3,7 +3,7 @@ import { ClaudeStandIn, type SendLogEntry, type StoryAI } from "./core/ai";
 import { runChecks } from "./core/checks";
 import { applySuggestion, locate, restoreScenes } from "./core/edits";
 import { buildModel, factKey, orderedScenes, presence } from "./core/model";
-import { exportMarkdown, importManuscript, newId, newProject } from "./core/project";
+import { exportMarkdown, importManuscript, newId, newProject, summarize, type ProjectSummary } from "./core/project";
 import { fnv1a, yearOf } from "./core/text";
 import type { AiExtraction, Entity, EntityKind, FlagMode, Issue, IssueType, Project, Scene, Severity, Span, StoryModel, Suggestion } from "./core/types";
 import { sampleProject } from "./data/sample";
@@ -38,6 +38,11 @@ const state = {
   bibleKind: "all" as EntityKind | "all",
   analysisMs: 0,
   saveText: "",
+  /** Unsaved edits to the open project. */
+  dirty: false,
+  libraryOpen: false,
+  library: [] as ProjectSummary[],
+  renaming: "",
 };
 
 const editor = new ManuscriptEditor(
@@ -199,6 +204,7 @@ async function deepCheck(s: Scene) {
 
 let saveTimer = 0;
 function scheduleSave() {
+  state.dirty = true;
   state.saveText = "Editing…";
   $("save-status").textContent = state.saveText;
   clearTimeout(saveTimer);
@@ -208,9 +214,11 @@ function scheduleSave() {
 async function saveNow() {
   clearTimeout(saveTimer);
   try {
+    state.dirty = false;
     await store.save(state.project);
     state.saveText = store.kind === "folder" ? "Saved" : "Saved in this browser";
   } catch (e) {
+    state.dirty = true;
     state.saveText = "Not saved: " + (e instanceof Error ? e.message : String(e));
   }
   $("save-status").textContent = state.saveText;
@@ -222,7 +230,7 @@ async function saveNow() {
 function selectScene(id: string, reveal?: Span) {
   if (id !== state.activeId) {
     state.activeId = id;
-    setPref("active-scene", id);
+    setPref(`active-scene:${state.project.id}`, id);
     const s = active();
     editor.load(s?.text ?? "");
     renderBinder();
@@ -289,14 +297,21 @@ function setMode(m: FlagMode) {
 }
 
 function loadProject(p: Project) {
+  clearTimeout(saveTimer);
   state.project = p;
+  state.dirty = false;
+  state.saveText = "";
+  $("save-status").textContent = "";
+  setPref("last-project", p.id);
+  setLibrary(false);
   state.aiCache = {};
   state.aiIssues.clear();
   state.openIssue = "";
   const first = scenesInOrder()[0];
   state.activeId = "";
   state.panelOpen = p.settings.mode !== "quiet";
-  selectScene(first?.id ?? "");
+  const last = getPref(`active-scene:${p.id}`);
+  selectScene(p.scenes.some((s) => s.id === last) ? last! : (first?.id ?? ""));
   analyse();
 }
 
@@ -376,11 +391,187 @@ function importFile() {
     const f = input.files?.[0];
     if (!f) return;
     const p = importManuscript(await f.text(), f.name.replace(/\.[^.]+$/, ""));
-    loadProject(p);
-    await saveNow();
+    await startProject(p);
     toast(`Imported ${p.scenes.length} scene${p.scenes.length > 1 ? "s" : ""} from ${f.name}. Add each scene's date and location to turn on timeline checks.`);
   });
   input.click();
+}
+
+// ---------- library
+
+/** Save the open project before another one replaces it. */
+async function leaveProject() {
+  if (state.dirty) await saveNow();
+}
+
+async function switchTo(id: string) {
+  if (id === state.project.id) return setLibrary(false);
+  await leaveProject();
+  const p = await store.load(id);
+  if (!p) return toast("That project could not be opened. Its folder may have moved.");
+  loadProject(p);
+}
+
+async function startProject(p: Project) {
+  await leaveProject();
+  loadProject(p);
+  await saveNow();
+}
+
+async function openFolder() {
+  await leaveProject();
+  try {
+    const p = await store.open!();
+    if (p) loadProject(p);
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function renameProject(id: string, title: string) {
+  state.renaming = "";
+  title = title.trim();
+  if (!title) return renderLibrary();
+  if (id === state.project.id) {
+    state.project.title = title;
+    renderLayout();
+    await saveNow();
+  } else {
+    const p = await store.load(id);
+    if (p) {
+      p.title = title;
+      await store.save(p);
+    }
+  }
+  await refreshLibrary();
+}
+
+let pendingProjectDelete = "";
+async function deleteProject(id: string) {
+  if (pendingProjectDelete !== id) {
+    pendingProjectDelete = id;
+    return renderLibrary();
+  }
+  pendingProjectDelete = "";
+  const current = id === state.project.id;
+  // A pending autosave must not bring the deleted project back.
+  if (current) clearTimeout(saveTimer);
+  const removed = current ? state.project : await store.load(id);
+  if (!removed) return;
+  try {
+    await store.remove(id);
+  } catch (e) {
+    return toast(`Could not delete: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (current) {
+    // Keep the editor on something: the most recent other novel, or a blank one.
+    const next = (await store.list())[0];
+    const p = next ? await store.load(next.id) : null;
+    loadProject(p ?? newProject());
+    if (!p) await saveNow();
+    setLibrary(true);
+  }
+  await refreshLibrary();
+  toast(`Deleted "${removed.title}".${store.kind === "folder" ? " Its folder is in Documents/Draftr/.trash." : ""}`, {
+    label: "Undo",
+    run: async () => {
+      await store.save(removed);
+      await refreshLibrary();
+    },
+  });
+}
+
+function setLibrary(open: boolean) {
+  state.libraryOpen = open;
+  state.renaming = "";
+  pendingProjectDelete = "";
+  $("library").hidden = !open;
+  $("app").classList.toggle("library-open", open);
+  if (open) refreshLibrary();
+}
+
+async function refreshLibrary() {
+  try {
+    state.library = await store.list();
+  } catch (e) {
+    toast(`Could not read the library: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  renderLibrary();
+}
+
+function ago(ms: number) {
+  if (!ms) return "";
+  const min = Math.round((Date.now() - ms) / 60000);
+  if (min < 1) return "edited just now";
+  if (min < 60) return `edited ${min} min ago`;
+  if (min < 60 * 24) return `edited ${Math.round(min / 60)} h ago`;
+  return `edited ${new Date(ms).toLocaleDateString()}`;
+}
+
+function renderLibrary() {
+  if (!state.libraryOpen) return;
+  // The open project is listed from memory, so unsaved titles and counts are current.
+  const live = summarize(state.project, state.library.find((x) => x.id === state.project.id)?.updated ?? Date.now());
+  const list = [live, ...state.library.filter((x) => x.id !== live.id)];
+  const saved = new Set(state.library.map((x) => x.id));
+  clear(
+    $("library"),
+    h(
+      "div",
+      { class: "library-inner" },
+      h(
+        "header",
+        { class: "library-head" },
+        h("h1", null, "Your novels"),
+        h("span", { class: "muted small" }, `${list.length} project${list.length === 1 ? "" : "s"}`),
+        h("div", { class: "spacer" }),
+        h("button", { class: "icon", title: "Back to the open novel (Esc)", onclick: () => setLibrary(false) }, "Close"),
+      ),
+      h(
+        "div",
+        { class: "actions wrap" },
+        h("button", { class: "primary", onclick: () => startProject(newProject()) }, "New novel"),
+        h("button", { onclick: importFile }, "Import .txt or .md…"),
+        store.open ? h("button", { onclick: openFolder }, "Open project folder…") : null,
+        h("button", { onclick: () => startProject(sampleProject()) }, "Add the sample"),
+      ),
+      h(
+        "div",
+        { class: "library-list" },
+        list.map((x) => {
+          const current = x.id === state.project.id;
+          const meta = [`${x.words.toLocaleString()} words`, `${x.scenes} scene${x.scenes === 1 ? "" : "s"}`, saved.has(x.id) ? ago(x.updated) : "not saved yet"].filter(Boolean).join(" · ");
+          return h(
+            "div",
+            { class: "card project-card" + (current ? " open" : ""), "data-project": x.id },
+            state.renaming === x.id
+              ? h("input", {
+                  class: "project-rename",
+                  value: x.title,
+                  "aria-label": "New title",
+                  onkeydown: (e: KeyboardEvent) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    else if (e.key === "Escape") (e.stopPropagation(), (state.renaming = ""), renderLibrary());
+                  },
+                  onblur: (e: Event) => state.renaming === x.id && renameProject(x.id, (e.target as HTMLInputElement).value),
+                })
+              : h("button", { class: "project-open", onclick: () => switchTo(x.id) }, h("span", { class: "project-name" }, x.title || "Untitled novel"), current ? h("span", { class: "muted small" }, "Open now") : null),
+            h("p", { class: "muted small" }, meta),
+            h(
+              "div",
+              { class: "actions" },
+              h("button", { class: "linkish", onclick: () => ((state.renaming = x.id), renderLibrary(), document.querySelector<HTMLInputElement>(".project-rename")?.select()) }, "Rename"),
+              h(
+                "button",
+                { class: "linkish danger" + (pendingProjectDelete === x.id ? " armed" : ""), onclick: () => deleteProject(x.id) },
+                pendingProjectDelete === x.id ? "Click again to delete" : "Delete",
+              ),
+            ),
+          );
+        }),
+      ),
+    ),
+  );
 }
 
 // ---------- rendering
@@ -991,9 +1182,7 @@ function renderSettings(el: HTMLElement) {
         },
         "Export Markdown",
       ),
-      store.open ? h("button", { onclick: async () => { const p = await store.open!(); if (p) loadProject(p); } }, "Open project folder…") : null,
-      h("button", { onclick: () => (loadProject(newProject()), saveNow()) }, "New project"),
-      h("button", { onclick: () => (loadProject(sampleProject()), saveNow()) }, "Load the sample"),
+      h("button", { onclick: () => setLibrary(true) }, "All novels…"),
     ),
   );
 }
@@ -1026,6 +1215,7 @@ $("badge").addEventListener("click", () => {
   renderPanel();
 });
 $("focus").addEventListener("click", () => setFocus(!state.focus));
+$("open-library").addEventListener("click", () => setLibrary(!state.libraryOpen));
 $("project-title").addEventListener("input", (e) => {
   state.project.title = (e.target as HTMLInputElement).value;
   scheduleSave();
@@ -1040,7 +1230,8 @@ function setFocus(on: boolean) {
 
 document.addEventListener("keydown", (e) => {
   const mod = e.metaKey || e.ctrlKey;
-  if (e.key === "Escape" && state.focus) setFocus(false);
+  if (e.key === "Escape" && state.libraryOpen && !state.renaming) setLibrary(false);
+  else if (e.key === "Escape" && state.focus) setFocus(false);
   else if (mod && e.key === "s") {
     e.preventDefault();
     saveNow();
@@ -1052,14 +1243,19 @@ document.addEventListener("keydown", (e) => {
 });
 
 async function boot() {
-  const saved = await store.load();
-  const p = saved ?? sampleProject();
-  loadProject(p);
-  const last = getPref("active-scene");
-  if (last && p.scenes.some((s) => s.id === last)) selectScene(last);
+  // Reopen the novel last worked on, else the most recently saved one, else the sample.
+  let saved: Project | null = null;
+  try {
+    const list = await store.list();
+    const pick = list.find((x) => x.id === getPref("last-project")) ?? list[0];
+    if (pick) saved = await store.load(pick.id);
+  } catch {
+    /* no library yet */
+  }
+  loadProject(saved ?? sampleProject());
   state.saveText = saved ? (store.kind === "folder" ? "Saved" : "Saved in this browser") : "";
   $("save-status").textContent = state.saveText;
-  if (!saved) toast("This is a sample manuscript with planted continuity errors. Try the Issues panel, or start a new project in Settings.");
+  if (!saved) toast("This is a sample manuscript with planted continuity errors. Try the Issues panel, or start your own from the Library.");
   if (isDesktop()) document.documentElement.classList.add("desktop");
 }
 
