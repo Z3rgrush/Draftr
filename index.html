@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Margin prototype</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <button class="icon" id="toggle-binder" title="Show or hide the binder">☰</button>
+        <input id="project-title" class="project-title" aria-label="Project title" />
+        <span id="save-status" class="muted small"></span>
+        <div class="spacer"></div>
+        <div class="seg" id="mode" role="radiogroup" aria-label="How much to show while drafting">
+          <button data-mode="quiet" title="Nothing while drafting">Quiet</button>
+          <button data-mode="gentle" title="A count only">Gentle</button>
+          <button data-mode="editor" title="Underlines and the issues panel">Editor</button>
+        </div>
+        <button id="badge" class="badge" hidden></button>
+        <button id="focus" title="Focus mode (Esc to leave)">Focus</button>
+        <button id="toggle-panel" title="Story panel (Ctrl+.)">Story</button>
+      </header>
+      <main class="layout">
+        <aside id="binder" class="binder"></aside>
+        <section class="editor-col">
+          <div id="scene-head" class="scene-head"></div>
+          <div class="editor-scroll"><div id="editor" class="editor"></div></div>
+          <footer id="status" class="statusbar muted small"></footer>
+        </section>
+        <aside id="panel" class="panel">
+          <nav class="tabs" id="tabs">
+            <button data-tab="issues">Issues</button>
+            <button data-tab="bible">Bible</button>
+            <button data-tab="tracking">Tracking</button>
+            <button data-tab="settings">Settings</button>
+          </nav>
+          <div id="panel-body" class="panel-body"></div>
+        </aside>
+      </main>
+      <div id="toast" class="toast" hidden></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
