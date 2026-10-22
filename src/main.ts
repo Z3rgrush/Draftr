@@ -3,6 +3,7 @@ import { ClaudeStandIn, type SendLogEntry, type StoryAI } from "./core/ai";
 import { runChecks } from "./core/checks";
 import { applySuggestion, locate, restoreScenes } from "./core/edits";
 import { buildModel, factKey, orderedScenes, presence } from "./core/model";
+import { importDocx } from "./core/docx";
 import { exportMarkdown, importManuscript, newId, newProject, summarize, type ProjectSummary } from "./core/project";
 import { fnv1a, yearOf } from "./core/text";
 import type { AiExtraction, Entity, EntityKind, FlagMode, Issue, IssueType, Project, Scene, Severity, Span, StoryModel, Suggestion } from "./core/types";
@@ -386,13 +387,31 @@ function download(name: string, text: string, type = "text/markdown") {
 }
 
 function importFile() {
-  const input = h("input", { type: "file", accept: ".txt,.md,.markdown,text/plain" });
+  const input = h("input", { type: "file", accept: ".docx,.txt,.md,.markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
   input.addEventListener("change", async () => {
     const f = input.files?.[0];
     if (!f) return;
-    const p = importManuscript(await f.text(), f.name.replace(/\.[^.]+$/, ""));
+    const name = f.name.replace(/\.[^.]+$/, "");
+    let p: Project;
+    let how = "";
+    if (/\.docx?$/i.test(f.name)) {
+      try {
+        const r = importDocx(new Uint8Array(await f.arrayBuffer()), name);
+        p = r.project;
+        if (r.splitBy === "none") how = " No chapter headings were found, so it came in as one chapter; use Heading 1 for chapters in Word to split it.";
+      } catch (e) {
+        return toast(e instanceof Error ? e.message : String(e));
+      }
+    } else p = importManuscript(await f.text(), name);
+    // Opening the project runs the continuity checks on the whole manuscript.
     await startProject(p);
-    toast(`Imported ${p.scenes.length} scene${p.scenes.length > 1 ? "s" : ""} from ${f.name}. Add each scene's date and location to turn on timeline checks.`);
+    const chapters = new Set(p.scenes.map((s) => s.chapter)).size;
+    const n = openIssues().length;
+    const found = n ? ` Found ${n} possible continuity issue${n > 1 ? "s" : ""}.` : " No continuity issues found.";
+    toast(
+      `Imported ${chapters} chapter${chapters > 1 ? "s" : ""} and ${p.scenes.length} scene${p.scenes.length > 1 ? "s" : ""} from ${f.name}.${found}${how} Add each scene's date and location to turn on timeline checks.`,
+      n > 0 ? { label: "Show issues", run: () => ((state.tab = "issues"), setMode("editor")) } : undefined,
+    );
   });
   input.click();
 }
@@ -531,7 +550,7 @@ function renderLibrary() {
         "div",
         { class: "actions wrap" },
         h("button", { class: "primary", onclick: () => startProject(newProject()) }, "New novel"),
-        h("button", { onclick: importFile }, "Import .txt or .md…"),
+        h("button", { onclick: importFile }, "Import .docx, .txt or .md…"),
         store.open ? h("button", { onclick: openFolder }, "Open project folder…") : null,
         h("button", { onclick: () => startProject(sampleProject()) }, "Add the sample"),
       ),
@@ -1170,7 +1189,7 @@ function renderSettings(el: HTMLElement) {
     h(
       "div",
       { class: "actions wrap" },
-      h("button", { onclick: importFile }, "Import .txt or .md…"),
+      h("button", { onclick: importFile }, "Import .docx, .txt or .md…"),
       h(
         "button",
         {
