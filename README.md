@@ -16,7 +16,7 @@ It opens on a 10-scene sample, *The Ashgrove Letters*, with seven planted contin
 | Tracking | Who appears where (acting vs mentioned), theme strip, plot-thread beats, timeline by in-story date |
 | AI tier | A narrow `StoryAI` interface shaped like the proposed Chaptr API (`extract`, `check`). Until Chaptr's endpoints exist, `ClaudeStandIn` implements it on the Claude API with the author's own key: per-scene extraction on a long pause, an on-demand deep check per scene (knowledge leaks, POV slips, setting drift), and a send log. AI facts are dropped automatically when the paragraph they came from changes. Off by default; rule checks need no network |
 | Library | Any number of novels. The Library (top left) lists them with word and scene counts and when each was last edited; create, open, rename and delete from there, and switching saves the one you leave. Deleting moves the folder to `Documents/Draftr/.trash` and can be undone from the toast. Each novel keeps its own story bible, decisions and settings |
-| Files | Each project is a plain folder: `project.json` plus one Markdown-with-frontmatter file per scene in `scenes/`. Writes are atomic, unchanged files are not rewritten, and deleted scenes go to `.trash/`. Import `.txt`/`.md` by chapter headings and scene breaks; export Markdown |
+| Files | Each project is a plain folder: `project.json` plus one Markdown-with-frontmatter file per scene in `scenes/`. Writes are atomic, unchanged files are not rewritten, and deleted scenes go to `.trash/`. Import Word `.docx` (chapters from Heading 1 or "Chapter" lines, scenes from Heading 2 or scene breaks, italic and bold kept, tracked deletions dropped) and `.txt`/`.md` by chapter headings and scene breaks, with continuity checks run on import; export Markdown |
 
 ## Stack and why
 
@@ -48,7 +48,7 @@ To try the AI tier: Settings, turn on "Use the AI tier", paste an Anthropic API 
 
 - The local extractor is rule-based English. It recognises common phrasings ("her green eyes", "Hale was thirty-four years old", "Reed was dead") and will miss others; that gap is what the AI tier is for. Pronoun resolution uses a simple vote per character.
 - Plot threads are detected locally only when a mystery is introduced as "the missing key", "the unsigned letter" and so on. The AI tier finds the rest.
-- No rich text yet (italics, scene-break styles), no .docx or Scrivener import, no version snapshots, no relationship map, no "Ask the manuscript".
+- No rich text yet (italics, scene-break styles), no Scrivener import, no version snapshots, no relationship map, no "Ask the manuscript".
 - The AI tier calls the Claude API directly from the app with the author's key. A production build would route through the Chaptr client in the Rust core with Chaptr's no-training and no-retention terms.
 
 ## Layout
