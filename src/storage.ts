@@ -1,5 +1,5 @@
 // Where projects live. In the desktop app, each project is a plain folder
-// (project.json + scenes/*.md) under Documents/Margin, so authors can back it
+// (project.json + scenes/*.md) under Documents/Draftr, so authors can back it
 // up with any sync tool. In the browser preview, it falls back to localStorage.
 
 import { fromFiles, toFiles, type ProjectFiles } from "./core/project";
@@ -16,8 +16,8 @@ export interface Store {
   where(): string;
 }
 
-const LAST = "margin:last-project-dir";
-const KEY = "margin:project";
+const LAST = "draftr:last-project-dir";
+const KEY = "draftr:project";
 
 function safeGet(k: string) {
   try {
@@ -78,12 +78,12 @@ class FolderStore implements Store {
 
   async save(p: Project) {
     // Each project keeps the folder it was first saved to or opened from.
-    let dir = safeGet(`margin:dir:${p.id}`);
+    let dir = safeGet(`draftr:dir:${p.id}`);
     if (!dir) {
       const root = await this.invoke<string>("projects_root");
       const slug = p.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "novel";
       dir = `${root}/${slug}-${p.id}`;
-      safeSet(`margin:dir:${p.id}`, dir);
+      safeSet(`draftr:dir:${p.id}`, dir);
     }
     this.dir = dir;
     safeSet(LAST, dir);
@@ -93,12 +93,12 @@ class FolderStore implements Store {
 
   async open() {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const dir = await open({ directory: true, title: "Open a Margin project folder" });
+    const dir = await open({ directory: true, title: "Open a Draftr project folder" });
     if (typeof dir !== "string") return null;
     const p = fromFiles(await this.invoke<ProjectFiles>("load_project", { dir }));
     this.dir = dir;
     safeSet(LAST, dir);
-    safeSet(`margin:dir:${p.id}`, dir);
+    safeSet(`draftr:dir:${p.id}`, dir);
     return p;
   }
 
@@ -118,8 +118,8 @@ export function createStore(): Store {
 }
 
 export function getPref(k: string) {
-  return safeGet("margin:" + k);
+  return safeGet("draftr:" + k);
 }
 export function setPref(k: string, v: string) {
-  safeSet("margin:" + k, v);
+  safeSet("draftr:" + k, v);
 }

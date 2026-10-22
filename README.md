@@ -1,4 +1,4 @@
-# Margin (working name): drafting prototype
+# Draftr: drafting prototype
 
 A first prototype of the desktop novel-drafting app described in the Drafting App Design Doc. It covers the core loop: the author writes freely, the app builds a story bible (characters, places, facts, plot threads, themes) from the draft on its own, and it flags contradictions with the passages involved and one-click fixes.
 
@@ -34,7 +34,7 @@ npm run build:preview  # single-file browser preview in dist-preview/
 cd src-tauri && cargo test   # Rust file-handling tests
 ```
 
-Projects are saved under `Documents/Margin/<title>-<id>/`.
+Projects are saved under `Documents/Draftr/<title>-<id>/`.
 
 To try the AI tier: Settings, turn on "Use the AI tier", paste an Anthropic API key. The key stays on the machine and is never written to the project folder.
 

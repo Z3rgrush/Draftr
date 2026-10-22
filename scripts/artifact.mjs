@@ -9,5 +9,5 @@ const scripts = pick(/<script[\s\S]*?<\/script>/g);
 const body = html.match(/<body>([\s\S]*)<\/body>/)[1].replace(/<script[\s\S]*?<\/script>/g, "");
 // A bundled library has a literal U+FFFD inside a JS string; write it as an escape so the file stays clean text.
 const page = `${title}\n${styles}\n${body}\n${scripts}\n`.replaceAll("\uFFFD", "\\uFFFD");
-writeFileSync("dist-preview/margin-preview.html", page);
-console.log("wrote dist-preview/margin-preview.html");
+writeFileSync("dist-preview/draftr-preview.html", page);
+console.log("wrote dist-preview/draftr-preview.html");

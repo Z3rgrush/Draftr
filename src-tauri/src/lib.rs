@@ -19,11 +19,11 @@ pub struct ProjectFiles {
     scenes: Vec<SceneFile>,
 }
 
-/// Documents/Margin, where new projects are created.
+/// Documents/Draftr, where new projects are created.
 #[tauri::command]
 fn projects_root(app: tauri::AppHandle) -> Result<String, String> {
     let docs = app.path().document_dir().map_err(|e| e.to_string())?;
-    let root = docs.join("Margin");
+    let root = docs.join("Draftr");
     fs::create_dir_all(&root).map_err(|e| e.to_string())?;
     Ok(root.to_string_lossy().into_owned())
 }
@@ -90,7 +90,7 @@ fn export_file(dir: String, name: String, content: String) -> Result<String, Str
 #[tauri::command]
 fn load_project(dir: String) -> Result<ProjectFiles, String> {
     let dir = PathBuf::from(dir);
-    let manifest = fs::read_to_string(dir.join("project.json")).map_err(|e| format!("not a Margin project: {e}"))?;
+    let manifest = fs::read_to_string(dir.join("project.json")).map_err(|e| format!("not a Draftr project: {e}"))?;
     let mut scenes = Vec::new();
     if let Ok(rd) = fs::read_dir(dir.join("scenes")) {
         for entry in rd.flatten() {
@@ -110,7 +110,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![projects_root, save_project, load_project, export_file])
         .run(tauri::generate_context!())
-        .expect("error while running Margin");
+        .expect("error while running Draftr");
 }
 
 #[cfg(test)]
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn save_and_load_round_trip() {
-        let dir = std::env::temp_dir().join(format!("margin-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("draftr-test-{}", std::process::id()));
         let files = ProjectFiles {
             manifest: "{\"sceneFiles\":[\"001-a.md\"]}".into(),
             scenes: vec![SceneFile { file: "001-a.md".into(), content: "---\nid: a\n---\nHello.\n".into() }],

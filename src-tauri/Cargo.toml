@@ -1,11 +1,11 @@
 [package]
-name = "margin"
+name = "draftr"
 version = "0.1.0"
 description = "Prototype novel-drafting app with an auto-built story bible and continuity checks"
 edition = "2021"
 
 [lib]
-name = "margin_lib"
+name = "draftr_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

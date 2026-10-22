@@ -102,7 +102,7 @@ export function toFiles(project: Project): ProjectFiles {
       .join("\n");
     return { file, content: fm + s.text.trim() + "\n" };
   });
-  const manifest = JSON.stringify({ format: "margin-project/1", ...rest, sceneFiles: files.map((f) => f.file) }, null, 2);
+  const manifest = JSON.stringify({ format: "draftr-project/1", ...rest, sceneFiles: files.map((f) => f.file) }, null, 2);
   return { manifest, scenes: files };
 }
 
