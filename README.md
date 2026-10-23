@@ -24,16 +24,49 @@ It opens on a 10-scene sample, *The Ashgrove Letters*, with seven planted contin
 
 One deliberate change from the doc for this stage: the story model and checks are written in TypeScript (`src/core`), not Rust. That keeps the core loop in one language while it is still changing fast, lets the same code run in a browser preview for quick feedback, and keeps the test suite simple. Rust currently owns the project files. Moving indexing into the Rust core is a later step once the model settles; `src/core` has no DOM dependencies, so it can move to a worker or be ported.
 
-## Run it
+## Local setup
+
+You need **Node.js 22, 24 or 26+** (24 LTS recommended; Node 25 is not supported by the test runner), **Rust**, and your OS's Tauri prerequisites. `.nvmrc` pins Node 24.
+
+### macOS
+
+1. Xcode command line tools: `xcode-select --install`
+2. Node 24 with Homebrew:
+   ```bash
+   brew update
+   brew install node@24
+   brew link --overwrite --force node@24
+   node -v   # should print v24.x
+   ```
+   Or with nvm: `nvm install && nvm use` in the repo folder.
+3. Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`, then open a new terminal.
+
+### Windows
+
+Install Node 24 LTS from nodejs.org, Rust from rustup.rs (choose the MSVC toolchain), and the "Desktop development with C++" workload from Visual Studio Build Tools. WebView2 ships with Windows 10 and 11.
+
+### Linux
+
+Node 24 (via nvm or your package manager), Rust via rustup, and the WebKitGTK packages listed in the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+### Run it
 
 ```bash
+git clone https://github.com/Z3rgrush/Draftr.git
+cd Draftr
 npm install
 npm test               # core tests (vitest)
-npm run tauri dev      # desktop app (needs Rust and the Tauri prerequisites for your OS)
+npm run tauri dev      # desktop app; the first run compiles the Rust shell and takes a few minutes
 npm run tauri build    # installers for the current OS
 npm run build:preview  # single-file browser preview in dist-preview/
 cd src-tauri && cargo test   # Rust file-handling tests
 ```
+
+### Troubleshooting
+
+- **`dyld: Library not loaded: .../libllhttp...` (or another `.dylib`) when running `node` or `npm`**: Homebrew updated a library without Node. Run `brew update && brew upgrade`, or reinstall Node as in step 2 above. This happens before npm runs, so it is not a problem with the project.
+- **`EBADENGINE` warnings or vitest refusing to start**: your Node version is outside the supported range. Switch to Node 24.
+- **`cargo: command not found` on `tauri dev`**: Rust is missing or the terminal was opened before installing it. Open a new terminal.
 
 Projects are saved under `Documents/Draftr/<title>-<id>/`. The library is every project folder found there, plus any folder opened from elsewhere with "Open project folder…". There is no sign-in yet: the library belongs to the computer's user account (in the browser preview, to that browser).
 
